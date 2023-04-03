@@ -19,7 +19,7 @@ namespace Week1Server
         static List<IPEndPoint> connectedClients = new List<IPEndPoint>();
 
         static string playerInfo = "Ping";
-        static string ip = "100.76.113.7";
+        static string ip = "100.76.113.2";
         static int lastAssignedGlobalID = 12;
         static void Main(string[] args)
         {
@@ -27,7 +27,7 @@ namespace Week1Server
 
 
             Thread thr1 = new Thread(SendData);
-            Thread thr2 = new Thread(KeyCheker);
+            Thread thr2 = new Thread(KeyCheck);
             Thread thr3 = new Thread(ReceiveData);
 
             thr1.Start();
@@ -138,9 +138,35 @@ namespace Week1Server
                         gameState.Add(intId, data);
                     }
                 }
+                else if (text.Contains("lose hp;"))
+                {
+                    Console.WriteLine(text);
+                    string globalId = text.Split(";")[1];
+                    int intId = Int32.Parse(globalId);
+                    string weaponDmg = text.Split(";")[2];
+                    int dmg = Int32.Parse(weaponDmg);
 
-                // connect the client 
-                bool IPisInList = false;
+
+                    foreach (IPEndPoint ep in connectedClients)
+                    {
+                       
+                        Console.WriteLine("Sending gamestate to " + ep.ToString());
+                        if (ep.Port != 0)
+                        {
+                            foreach (KeyValuePair<int, byte[]> kvp in gameState)
+                            {
+                                //newsock.SendTo(kvp.Value, kvp.Value.Length, SocketFlags.None, ep);
+
+                                string returnVal = ("Id:;" + intId + ";" + dmg + ";");
+                                newsock.SendTo(Encoding.ASCII.GetBytes(returnVal), Encoding.ASCII.GetBytes(returnVal).Length,
+                                    SocketFlags.None, ep);
+                            }
+                        }
+                    }
+                }
+
+                    // connect the client 
+                    bool IPisInList = false;
                 IPEndPoint senderIPEndPoint = (IPEndPoint)newRemote;
 
                 foreach (IPEndPoint ep in connectedClients)
@@ -164,7 +190,7 @@ namespace Week1Server
 
             }
         }
-        static private void KeyCheker()
+        static private void KeyCheck()
         {
 
             while (true)
