@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
+using static System.Net.Mime.MediaTypeNames;
 
 
 namespace Week1Server
@@ -19,10 +20,11 @@ namespace Week1Server
         static List<IPEndPoint> connectedClients = new List<IPEndPoint>();
 
         static string playerInfo = "Ping";
-        static string ip = "100.76.113.2";
+        static string ip = "100.76.113.15";
         static int lastAssignedGlobalID = 12;
         static void Main(string[] args)
         {
+            
             initializeServer();
 
 
@@ -36,11 +38,9 @@ namespace Week1Server
         }
 
         
-
+        //open socket for the ip
         static void initializeServer()
         {
-            //task 1
-            //10.1.162.32
 
             IPEndPoint ipep = new IPEndPoint(IPAddress.Parse(ip), 9050); //our server IP. This is set to local (127.0.0.1) on socket 9050. If 9050 is firewalled, you might want to try another!
 
@@ -49,6 +49,7 @@ namespace Week1Server
             Console.WriteLine("Socket open..."); //if we made it this far without any networking errors, it’s a good start!
         }
 
+        //Send data to Client
         static private void SendData()
         {
             byte[] data = new byte[1024];
@@ -68,7 +69,8 @@ namespace Week1Server
                            
                             if (ep.Port != 0)
                             {
-                                foreach (KeyValuePair<int, byte[]> kvp in gameState.ToList())
+                                //update data to clients
+                                foreach (KeyValuePair<int, byte[]> kvp in gameState)
                                 {
                                     newsock.SendTo(kvp.Value, kvp.Value.Length, SocketFlags.None, ep);
                                 }
@@ -77,26 +79,24 @@ namespace Week1Server
                     }
 
                 }
-
+                //Thread.Sleep(5);
             }
             
         }
 
+        //Receive data from Client
         static private void ReceiveData()
         {
 
 
-            byte[] data = new byte[1024]; // the (expected) packet size. Powers of 2 are good. Typically for a game we want small, optimised packets travelling fast. The 1024 bytes chosen here is arbitrary – you should adjust it.
+            byte[] data = new byte[1024]; // packet size. 
             int recv;
 
-            //task 2
             int pos = 0;
 
-
-            //ConsoleKey keyCheck;
             while (true)
             {
-
+                //receive the current endpoint and the data from it
                 sender[pos] = new IPEndPoint(IPAddress.Any, 0);
                 if (Remote[pos] == null)
                 {
@@ -104,15 +104,13 @@ namespace Week1Server
                 }               
 
                 EndPoint newRemote = Remote[pos];
-                data = new byte[1024];
-                recv = newsock.ReceiveFrom(data, ref newRemote); //recv is now a byte array containing whatever just arrived from the client
+                data = new byte[2048];
+                recv = newsock.ReceiveFrom(data, ref newRemote); //recv is now a byte array containing what just arrived from the client
                
-                //Console.WriteLine("Message received from " + newRemote.ToString()); //this will show the client’s unique id
-                //Console.WriteLine(Encoding.ASCII.GetString(data, 0, recv)); //and this will show the data
-                string text = Encoding.ASCII.GetString(data, 0, recv); //and this will show the data               
+                string text = Encoding.ASCII.GetString(data, 0, recv); //pass data to a string               
 
 
-                
+                //if string relates to id
                 if (text.Contains("I need a UID for local object:"))
                 {
                     Console.WriteLine(text.Substring(text.IndexOf(':')));
@@ -124,43 +122,52 @@ namespace Week1Server
                         SocketFlags.None, newRemote);
 
                 }
+                //if string relates to data from client
                 else if (text.Contains("Object data;"))
                 {
-                    Console.WriteLine(text);
+                    //Console.WriteLine(text);
                     string globalId = text.Split(";")[1];
                     int intId = Int32.Parse(globalId);
+                    
+
+                    CheckCheating(text);
+                    //anti cheat for HP
+                    
                     if (gameState.ContainsKey(intId))
-                    { //if true, we're already tracking the object
-                        gameState[intId] = data; //data being the original bytes of the packet
+                    {
+                            //if the object already exists
+                            gameState[intId] = data; //data being the original bytes of the packet
                     }
                     else //the object is new to the game
                     {
-                        gameState.Add(intId, data);
+                            gameState.Add(intId, data);
                     }
+                    
+                    
+                    
                 }
+                //if string relates to losing hp
                 else if (text.Contains("lose hp;"))
                 {
+                    //get ID of enemy that was hit and the damage
                     Console.WriteLine(text);
                     string globalId = text.Split(";")[1];
                     int intId = Int32.Parse(globalId);
                     string weaponDmg = text.Split(";")[2];
                     int dmg = Int32.Parse(weaponDmg);
 
-
+                    //loop trough all clients
                     foreach (IPEndPoint ep in connectedClients)
                     {
                        
-                        Console.WriteLine("Sending gamestate to " + ep.ToString());
+                        Console.WriteLine("Sending event to " + ep.ToString());
                         if (ep.Port != 0)
                         {
-                            foreach (KeyValuePair<int, byte[]> kvp in gameState)
-                            {
-                                //newsock.SendTo(kvp.Value, kvp.Value.Length, SocketFlags.None, ep);
-
-                                string returnVal = ("Id:;" + intId + ";" + dmg + ";");
-                                newsock.SendTo(Encoding.ASCII.GetBytes(returnVal), Encoding.ASCII.GetBytes(returnVal).Length,
+                            //send the id of the enemy it and the dmg to all clients
+                            string returnVal = ("Id:;" + intId + ";" + dmg + ";");
+                            newsock.SendTo(Encoding.ASCII.GetBytes(returnVal), Encoding.ASCII.GetBytes(returnVal).Length,
                                     SocketFlags.None, ep);
-                            }
+                            Console.WriteLine("got event to " + ep.ToString());
                         }
                     }
                 }
@@ -169,19 +176,21 @@ namespace Week1Server
                     bool IPisInList = false;
                 IPEndPoint senderIPEndPoint = (IPEndPoint)newRemote;
 
+                //loop trough all clients
                 foreach (IPEndPoint ep in connectedClients)
                 {
                     if (senderIPEndPoint.ToString().Equals(ep.ToString())) IPisInList = true;
-                    Console.WriteLine("Sending gamestate to " + ep.ToString());
+                  
                     if (ep.Port != 0)
                     {
+                        //Update data of the clients
                         foreach (KeyValuePair<int, byte[]> kvp in gameState)
                         {
                             newsock.SendTo(kvp.Value, kvp.Value.Length, SocketFlags.None, ep);
                         }
                     }
                 }
-                if (!IPisInList)
+                if (!IPisInList) //if client doesn't exist connect it
                 {
                     connectedClients.Add(senderIPEndPoint);
                     Console.WriteLine("A new client just connected. There are now " + connectedClients.Count + " clients.");
@@ -190,17 +199,33 @@ namespace Week1Server
 
             }
         }
+        //check if key was pressed
         static private void KeyCheck()
         {
 
             while (true)
             {
+                //if pressed esc close program
                 if (Console.ReadKey().Key == ConsoleKey.Escape)
                 {
                     Environment.Exit(0);
                     return;
                 }
             }
+        }
+
+        static public void CheckCheating(string data)
+        {
+            string globalId = data.Split(";")[1];
+            int intId = Int32.Parse(globalId);
+            string hpValue = data.Split(";")[9];
+            int currentHP = Int32.Parse(hpValue);
+
+            if (currentHP > 100)
+            {
+                Console.WriteLine("Player: " + intId + " was disconnected due to cheating");
+            }           
+            
         }
 
     }
