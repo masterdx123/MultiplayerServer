@@ -20,7 +20,7 @@ namespace Week1Server
         static List<IPEndPoint> connectedClients = new List<IPEndPoint>();
 
         static string playerInfo = "Ping";
-        static string ip = "100.76.113.15";
+        static string ip = "25.53.60.215";
         static int lastAssignedGlobalID = 12;
         static void Main(string[] args)
         {
@@ -216,6 +216,7 @@ namespace Week1Server
 
         static public void CheckCheating(string data)
         {
+            //get ID of enemy that was hit and the current hp
             string globalId = data.Split(";")[1];
             int intId = Int32.Parse(globalId);
             string hpValue = data.Split(";")[9];
